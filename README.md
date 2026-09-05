@@ -18,12 +18,20 @@ This will **not** render overlays by itself, use something like [Browsingway](ht
 - Doesn't use legacy technology that hurts Linux and macOS users
 - Follows the Unix philosophy of just doing one thing and doing it well   
 
-## Installing 
+## Installing
 
-> **Warning**  
-> No support will be provided on any Dalamud official support channel. Please use the [Issues](https://github.com/marzent/IINACT/issues) page or [Discord](https://discord.gg/pcexJC8YPG) for any support requests. Do NOT ask for support on the [XIVLauncher & Dalamud Discord](https://discord.gg/holdshift), as support for 3rd-party plugins is not provided there. 
+This plugin is distributed as a custom Dalamud plugin.
 
-Install instructions can be found [here](https://www.iinact.com/installation/), but are indentical to any other 3rd-party plugin repository.
+In-game: `/xlsettings` → Experimental → Custom Plugin Repositories
+Add the repo URL (see [Releases](https://github.com/xdw0000/IINACTCN/releases) page):
+`https://cdn.jsdelivr.net/gh/xdw0000/IINACTCN@main/repo.json`
+(fallback: `https://raw.githubusercontent.com/xdw0000/IINACTCN/main/repo.json`)
+`/xlplugins` → search "IINACT" → Install
+
+Or for local dev builds:
+
+`dotnet build` (repo root, `IINACT.sln`)
+`/xlsettings` → Experimental → Dev Plugin Locations → add the DLL path (`IINACT/bin/Release/win-x64/IINACT.dll`)
 
 ## How to build
 
