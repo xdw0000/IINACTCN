@@ -54,3 +54,7 @@ You will need to be able to reference Dalamud as well, meaning having an install
 **Are these logs compatible with FFLogs? Can I use the FFLogs Uploader?**
 
 - Yes! 100% compatible.
+
+## Acknowledgements
+
+This project is a fork of [IINACT](https://github.com/marzent/IINACT), originally created and maintained by [Marc-Aurel Zent (marzent)](https://github.com/marzent). All credit for the original plugin goes to the upstream author and its contributors.
