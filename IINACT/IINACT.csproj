@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Dalamud.NET.Sdk/15.0.0">
     <PropertyGroup>
-        <Authors>Usagi</Authors>
+        <Authors>David</Authors>
         <Company>Dezent</Company>
-        <Version>2.10.3.6</Version>
+        <Version>2.10.3.7</Version>
         <Description>A parsing plugin.</Description>
         <Copyright></Copyright>
-        <PackageProjectUrl>https://github.com/marzent/IINACT</PackageProjectUrl>
+        <PackageProjectUrl>https://github.com/xdw0000/IINACTCN</PackageProjectUrl>
     </PropertyGroup>
 
     <PropertyGroup>

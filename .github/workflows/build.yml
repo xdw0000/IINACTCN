@@ -46,8 +46,8 @@ jobs:
         }
         Write-Output "RELEASE_VERSION=$($build.AssemblyVersion)" >> $env:GITHUB_ENV
         $repo.AssemblyVersion = $repo.TestingAssemblyVersion = $build.AssemblyVersion
-        $repo.DownloadLinkInstall = 'https://github.com/marzent/IINACT/releases/download/v' + $repo.AssemblyVersion + '/IINACT.zip'
-        $repo.DownloadLinkTesting =  'https://github.com/marzent/IINACT/releases/download/v' + $repo.TestingAssemblyVersion + '/IINACT.zip'
+        $repo.DownloadLinkInstall = 'https://github.com/xdw0000/IINACTCN/releases/download/v' + $repo.AssemblyVersion + '/IINACT.zip'
+        $repo.DownloadLinkTesting =  'https://github.com/xdw0000/IINACTCN/releases/download/v' + $repo.TestingAssemblyVersion + '/IINACT.zip'
         $repo.DownloadLinkUpdate = $repo.DownloadLinkInstall
         $repo | ConvertTo-Json | % { "[`n" + $_ + "`n]" } | Set-Content 'repo.json'
     - name: Create Release
