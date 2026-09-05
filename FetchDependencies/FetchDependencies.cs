@@ -9,6 +9,7 @@ public class FetchDependencies
     private const string VersionUrlChinese = "https://cninact.diemoe.net/CN解析/版本.txt";
     private const string PluginUrlGlobal = "https://www.iinact.com/updater/download";
     private const string PluginUrlChinese = "https://cninact.diemoe.net/CN解析/FFXIV_ACT_Plugin.dll";
+    private const string GitHubApiLatestUrl = "https://api.github.com/repos/ravahn/FFXIV_ACT_Plugin/releases/latest";
 
     private Version PluginVersion { get; }
     private string DependenciesDir { get; }
@@ -27,26 +28,24 @@ public class FetchDependencies
     {
         var pluginZipPath = Path.Combine(DependenciesDir, "FFXIV_ACT_Plugin.zip");
         var pluginPath = Path.Combine(DependenciesDir, "FFXIV_ACT_Plugin.dll");
-        
+
         if (!NeedsUpdate(pluginPath))
             return;
-        
-        if (!File.Exists(pluginZipPath))
-        {
-            DownloadPlugin(pluginZipPath);
-        }
+
+        // A stale or corrupted leftover zip must not short-circuit a fresh download.
+        if (File.Exists(pluginZipPath))
+            File.Delete(pluginZipPath);
+
+        DownloadPlugin(pluginZipPath);
 
         try
         {
             ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
         }
-        catch (InvalidDataException)
+        finally
         {
             File.Delete(pluginZipPath);
-            DownloadPlugin(pluginZipPath);
-            ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
         }
-        File.Delete(pluginZipPath);
 
         foreach (var deucalionDll in Directory.GetFiles(DependenciesDir, "deucalion*.dll"))
             File.Delete(deucalionDll);
@@ -66,13 +65,9 @@ public class FetchDependencies
 
             if (!plugin.ApiVersionMatches())
                 return true;
-            
-            using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            var remoteVersionString = HttpClient
-                                      .GetStringAsync(IsChinese ? VersionUrlChinese : VersionUrlGlobal,
-                                                      cancelAfterDelay.Token).Result;
-            var remoteVersion = new Version(remoteVersionString);
-            return remoteVersion > plugin.Version;
+
+            var remoteVersion = TryGetRemoteVersion();
+            return remoteVersion != null && remoteVersion > plugin.Version;
         }
         catch
         {
@@ -80,33 +75,147 @@ public class FetchDependencies
         }
     }
 
+    private Version? TryGetRemoteVersion()
+    {
+        // The CN mirror has been known to lag behind or go offline (e.g. returning
+        // 404 pages), so it is only tried first and falls back to the official updater.
+        var urls = IsChinese
+            ? new[] { VersionUrlChinese, VersionUrlGlobal }
+            : new[] { VersionUrlGlobal };
+
+        foreach (var url in urls)
+        {
+            try
+            {
+                using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var remoteVersionString = HttpClient
+                                          .GetStringAsync(url, cancelAfterDelay.Token).Result;
+                return new Version(remoteVersionString.Trim());
+            }
+            catch
+            {
+                // Try the next source.
+            }
+        }
+
+        return null;
+    }
+
     private void DownloadPlugin(string pluginZipPath)
+    {
+        var sources = new List<string>();
+        if (IsChinese)
+            sources.Add(PluginUrlChinese);
+        sources.Add(PluginUrlGlobal);
+
+        foreach (var source in sources)
+        {
+            if (TryDownloadFrom(source, pluginZipPath))
+                return;
+        }
+
+        // Last resort: the official GitHub release. Its API may be blocked on some
+        // networks, but the mirror URLs above normally succeed before we get here.
+        string? githubUrl;
+        try
+        {
+            githubUrl = GetGitHubReleaseDownloadUrl();
+        }
+        catch (Exception ex)
+        {
+            throw new Exception(
+                $"Failed to download FFXIV_ACT_Plugin: the mirror sources were unavailable and the " +
+                $"GitHub API fallback also failed ({ex.Message}). Tried: {string.Join(", ", sources)}.");
+        }
+
+        if (githubUrl != null && TryDownloadFrom(githubUrl, pluginZipPath))
+            return;
+
+        throw new Exception(
+            $"Failed to download a valid FFXIV_ACT_Plugin archive from any source. " +
+            $"Tried: {string.Join(", ", sources.Append(githubUrl ?? "GitHub release (no zip asset)"))}.");
+    }
+
+    private bool TryDownloadFrom(string url, string pluginZipPath)
     {
         try
         {
-            DownloadFile(IsChinese ? PluginUrlChinese : PluginUrlGlobal, pluginZipPath);
+            DownloadFile(url, pluginZipPath);
+
+            if (!IsValidZip(pluginZipPath))
+                throw new InvalidDataException(
+                    $"The file downloaded from {url} is not a valid zip archive (the server may have " +
+                    $"returned an error page).");
+
+            return true;
         }
         catch
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/ravahn/FFXIV_ACT_Plugin/releases/latest");
-            request.Headers.UserAgent.ParseAdd("IINACT/1.0");
-            using var response = HttpClient.Send(request);
-            response.EnsureSuccessStatusCode();
+            try
+            {
+                File.Delete(pluginZipPath);
+            }
+            catch
+            {
+                // Ignore cleanup failures.
+            }
 
-            using var stream = response.Content.ReadAsStream();
-            var json = JsonNode.Parse(stream);
-            var downloadUrl = json?["assets"]?[0]?["browser_download_url"]?.ToString();
-
-            if (string.IsNullOrEmpty(downloadUrl))
-                throw new Exception("Could not find fallback download URL from GitHub API.");
-
-            DownloadFile(downloadUrl, pluginZipPath);
+            return false;
         }
+    }
+
+    private static bool IsValidZip(string path)
+    {
+        try
+        {
+            using var archive = ZipFile.OpenRead(path);
+            return archive.Entries.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private string? GetGitHubReleaseDownloadUrl()
+    {
+        using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var request = new HttpRequestMessage(HttpMethod.Get, GitHubApiLatestUrl);
+        request.Headers.UserAgent.ParseAdd("IINACT/1.0");
+        using var response = HttpClient.Send(request, cancelAfterDelay.Token);
+        response.EnsureSuccessStatusCode();
+
+        using var stream = response.Content.ReadAsStream(cancelAfterDelay.Token);
+        var json = JsonNode.Parse(stream);
+        var assets = json?["assets"]?.AsArray();
+        if (assets == null)
+            return null;
+
+        // Prefer the FFXIV_ACT_Plugin zip asset; fall back to any zip, in case the
+        // asset order/names change upstream.
+        string? fallback = null;
+        foreach (var asset in assets)
+        {
+            var name = asset?["name"]?.ToString();
+            if (string.IsNullOrEmpty(name) || !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var url = asset?["browser_download_url"]?.ToString();
+            if (url == null)
+                continue;
+
+            if (name.Contains("FFXIV_ACT_Plugin", StringComparison.OrdinalIgnoreCase))
+                return url;
+
+            fallback ??= url;
+        }
+
+        return fallback;
     }
 
     private void DownloadFile(string url, string path)
     {
-        using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         using var downloadStream = HttpClient
                                    .GetStreamAsync(url,
                                                    cancelAfterDelay.Token).Result;
