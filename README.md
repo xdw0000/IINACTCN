@@ -1,4 +1,4 @@
-![icon](https://github.com/marzent/IINACT/blob/main/images/icon.ico?raw=true)
+![icon](https://github.com/xdw0000/IINACTCN/blob/main/images/icon.ico?raw=true)
 
 # IINACT
 
@@ -6,13 +6,13 @@ A [Dalamud](https://github.com/goatcorp/Dalamud) plugin to run the [FFXIV_ACT_Pl
 
 The data source here is only based on [Unscrambler](https://github.com/perchbirdd/Unscrambler) and does not require any extra injection with [Deucalion](https://github.com/ff14wed/deucalion) or network capture with elevated privileges.
 
-This will **not** render overlays by itself, use something like [Browsingway](https://github.com/Styr1x/Browsingway), [Next UI](https://github.com/kaminaris/Next-UI), [hudkit](https://github.com/valarnin/hudkit) (Linux only) or [Bunny HUD](https://github.com/marzent/Bunny-HUD) (macOS only) to display Overlays.
+This will **not** render overlays by itself, use something like [Browsingway](https://github.com/Styr1x/Browsingway), [Next UI](https://github.com/kaminaris/Next-UI) or [hudkit](https://github.com/valarnin/hudkit) (Linux only) to display Overlays.
 
 
 ## Why
 
 - ACT is too inconvenient IMHO for just wanting to have the game data parsed and served via a WebSocket server
-- Drastically more efficent than ACT, in part to .NET 7.0, in part to a more sane log line processing (disk I/O is not blocking LogLineEvents and happening on a separate lower priority thread)
+- Drastically more efficent than ACT, in part to .NET 10, in part to a more sane log line processing (disk I/O is not blocking LogLineEvents and happening on a separate lower priority thread)
 - Due to the above and running fully inside the game process CPU usage will be orders of magnitude (not exaggerating here) lower when running under Wine compared to network-based capture
 - Uses an ultra fast and low latency WebSocket server based on [NetCoreServer](https://github.com/chronoxor/NetCoreServer)
 - Doesn't use legacy technology that hurts Linux and macOS users
@@ -37,13 +37,13 @@ Or for local dev builds:
 
 Just run 
 ```
-git clone --recurse-submodules https://github.com/marzent/IINACT.git
-cd IINACT
+git clone --recurse-submodules https://github.com/xdw0000/IINACTCN.git
+cd IINACTCN
 dotnet build
 ``` 
-on a Linux, macOS or Windows machine with the [.NET 7 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0). 
+on a Linux, macOS or Windows machine with the [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0). 
 
-You will need to be able to reference Dalamud as well, meaning having an install of [XL](https://github.com/goatcorp/FFXIVQuickLauncher) or [XOM](https://github.com/marzent/XIV-on-Mac) on Windows and macOS respectively. On Linux `DALAMUD_HOME` needs to be correctly set (for example `$HOME/.xlcore/dalamud/Hooks/dev`).
+You will need to be able to reference Dalamud as well, meaning having an install of [XIVLauncher](https://github.com/goatcorp/FFXIVQuickLauncher) (or 卫月 / XIVLauncher CN for the Chinese game client) on Windows or XIV-on-Mac (XOM) on macOS. On Linux `DALAMUD_HOME` needs to be correctly set (for example `$HOME/.xlcore/dalamud/Hooks/dev`).
 
 ## FAQ
 
