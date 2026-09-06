@@ -36,15 +36,24 @@ public class FetchDependencies
         if (File.Exists(pluginZipPath))
             File.Delete(pluginZipPath);
 
-        DownloadPlugin(pluginZipPath);
-
-        try
+        if (IsChinese)
         {
-            ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
+            // The CN mirror serves the CN-patched FFXIV_ACT_Plugin.dll as a raw PE file,
+            // NOT a zip, so it must be written straight over FFXIV_ACT_Plugin.dll. Its
+            // Logfile/Memory satellites are embedded in that single file as Costura
+            // resources and are unpacked by Patcher.MainPlugin below. A global build
+            // must never be substituted here — it cannot parse the CN client's data.
+            if (!TryDownloadFrom(PluginUrlChinese, pluginPath, IsValidPe))
+            {
+                // CN mirror unreachable and no usable CN build on disk yet: fall back to
+                // the global zip so the plugin still loads. Combat data will not parse
+                // until the mirror is back and a CN dll has been installed.
+                InstallGlobalZip(pluginZipPath);
+            }
         }
-        finally
+        else
         {
-            File.Delete(pluginZipPath);
+            InstallGlobalZip(pluginZipPath);
         }
 
         foreach (var deucalionDll in Directory.GetFiles(DependenciesDir, "deucalion*.dll"))
@@ -54,6 +63,20 @@ public class FetchDependencies
         patcher.MainPlugin();
         patcher.LogFilePlugin();
         patcher.MemoryPlugin();
+    }
+
+    private void InstallGlobalZip(string pluginZipPath)
+    {
+        DownloadGlobalPlugin(pluginZipPath);
+
+        try
+        {
+            ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
+        }
+        finally
+        {
+            File.Delete(pluginZipPath);
+        }
     }
 
     private bool NeedsUpdate(string dllPath)
@@ -77,45 +100,32 @@ public class FetchDependencies
 
     private Version? TryGetRemoteVersion()
     {
-        // The CN mirror has been known to lag behind or go offline (e.g. returning
-        // 404 pages), so it is only tried first and falls back to the official updater.
-        var urls = IsChinese
-            ? new[] { VersionUrlChinese, VersionUrlGlobal }
-            : new[] { VersionUrlGlobal };
+        // Only compare against the version feed of the running region: the CN mirror
+        // and the official updater number their builds independently, so mixing the
+        // two schemes would spuriously trigger or suppress updates.
+        var url = IsChinese ? VersionUrlChinese : VersionUrlGlobal;
 
-        foreach (var url in urls)
+        try
         {
-            try
-            {
-                using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                var remoteVersionString = HttpClient
-                                          .GetStringAsync(url, cancelAfterDelay.Token).Result;
-                return new Version(remoteVersionString.Trim());
-            }
-            catch
-            {
-                // Try the next source.
-            }
+            using var cancelAfterDelay = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var remoteVersionString = HttpClient
+                                      .GetStringAsync(url, cancelAfterDelay.Token).Result;
+            return new Version(remoteVersionString.Trim());
         }
-
-        return null;
+        catch
+        {
+            // Region feed unreachable — leave the installed plugin in place.
+            return null;
+        }
     }
 
-    private void DownloadPlugin(string pluginZipPath)
+    private void DownloadGlobalPlugin(string pluginZipPath)
     {
-        var sources = new List<string>();
-        if (IsChinese)
-            sources.Add(PluginUrlChinese);
-        sources.Add(PluginUrlGlobal);
-
-        foreach (var source in sources)
-        {
-            if (TryDownloadFrom(source, pluginZipPath))
-                return;
-        }
+        if (TryDownloadFrom(PluginUrlGlobal, pluginZipPath, IsValidZip))
+            return;
 
         // Last resort: the official GitHub release. Its API may be blocked on some
-        // networks, but the mirror URLs above normally succeed before we get here.
+        // networks, but the mirror URL above normally succeeds before we get here.
         string? githubUrl;
         try
         {
@@ -125,26 +135,26 @@ public class FetchDependencies
         {
             throw new Exception(
                 $"Failed to download FFXIV_ACT_Plugin: the mirror sources were unavailable and the " +
-                $"GitHub API fallback also failed ({ex.Message}). Tried: {string.Join(", ", sources)}.");
+                $"GitHub API fallback also failed ({ex.Message}). Tried: {PluginUrlGlobal}.");
         }
 
-        if (githubUrl != null && TryDownloadFrom(githubUrl, pluginZipPath))
+        if (githubUrl != null && TryDownloadFrom(githubUrl, pluginZipPath, IsValidZip))
             return;
 
         throw new Exception(
             $"Failed to download a valid FFXIV_ACT_Plugin archive from any source. " +
-            $"Tried: {string.Join(", ", sources.Append(githubUrl ?? "GitHub release (no zip asset)"))}.");
+            $"Tried: {PluginUrlGlobal}, {githubUrl ?? "GitHub release (no zip asset)"}.");
     }
 
-    private bool TryDownloadFrom(string url, string pluginZipPath)
+    private bool TryDownloadFrom(string url, string path, Func<string, bool> isValid)
     {
         try
         {
-            DownloadFile(url, pluginZipPath);
+            DownloadFile(url, path);
 
-            if (!IsValidZip(pluginZipPath))
+            if (!isValid(path))
                 throw new InvalidDataException(
-                    $"The file downloaded from {url} is not a valid zip archive (the server may have " +
+                    $"The file downloaded from {url} is not a valid file (the server may have " +
                     $"returned an error page).");
 
             return true;
@@ -153,7 +163,7 @@ public class FetchDependencies
         {
             try
             {
-                File.Delete(pluginZipPath);
+                File.Delete(path);
             }
             catch
             {
@@ -170,6 +180,29 @@ public class FetchDependencies
         {
             using var archive = ZipFile.OpenRead(path);
             return archive.Entries.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsValidPe(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+
+            // The CN build is a ~3 MB DLL; anything tiny is a server error page, and a
+            // truncated transfer would only be caught later by the patcher.
+            if (stream.Length < 1_000_000)
+                return false;
+
+            var magic = new byte[2];
+            if (stream.Read(magic, 0, 2) != 2)
+                return false;
+
+            return magic[0] == (byte)'M' && magic[1] == (byte)'Z';
         }
         catch
         {
