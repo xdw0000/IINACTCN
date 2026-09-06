@@ -31,22 +31,34 @@ public class FetchDependencies
         if (!NeedsUpdate(pluginPath))
             return;
         
-        if (!File.Exists(pluginZipPath))
+        if (IsChinese)
         {
-            DownloadPlugin(pluginZipPath);
+            // The CN mirror (cninact.diemoe.net) serves the CN-patched
+            // FFXIV_ACT_Plugin.dll directly as a raw DLL, NOT as a zip archive, so it
+            // is written straight over FFXIV_ACT_Plugin.dll. Its Logfile/Memory
+            // satellites are embedded as Costura resources and unpacked by
+            // Patcher.MainPlugin below.
+            DownloadFile(PluginUrlChinese, pluginPath);
         }
+        else
+        {
+            if (!File.Exists(pluginZipPath))
+            {
+                DownloadPlugin(pluginZipPath);
+            }
 
-        try
-        {
-            ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
-        }
-        catch (InvalidDataException)
-        {
+            try
+            {
+                ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
+            }
+            catch (InvalidDataException)
+            {
+                File.Delete(pluginZipPath);
+                DownloadPlugin(pluginZipPath);
+                ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
+            }
             File.Delete(pluginZipPath);
-            DownloadPlugin(pluginZipPath);
-            ZipFile.ExtractToDirectory(pluginZipPath, DependenciesDir, true);
         }
-        File.Delete(pluginZipPath);
 
         foreach (var deucalionDll in Directory.GetFiles(DependenciesDir, "deucalion*.dll"))
             File.Delete(deucalionDll);
